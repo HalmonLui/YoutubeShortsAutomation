@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import pandas as pd
 from datetime import datetime, timedelta
 import pytz
 from src.youtube_automation.services.api_services import (
@@ -61,7 +62,49 @@ if videos:
     # Initialize YouTube service
     youtube_service = get_youtube_service(dev_mode)
     
-    # Process videos
-    process_videos(videos, youtube_service, output_dir, config)
+    # Process videos and get results
+    processed_videos = process_videos(videos, youtube_service, output_dir, config)
+    
+    # Display results in a table
+    if processed_videos:
+        st.subheader("Processed Videos Summary")
+        df = pd.DataFrame(processed_videos)
+        
+        # Display the table with highlighting
+        st.dataframe(
+            df,
+            column_config={
+                "Starting Number": st.column_config.NumberColumn(
+                    "Starting Number",
+                    help="Template number used for the video"
+                ),
+                "Scheduled Date": st.column_config.TextColumn(
+                    "Scheduled Date",
+                    help="Scheduled release date and time (EST)"
+                ),
+                "Original Video URL": st.column_config.LinkColumn(
+                    "Original Video URL",
+                    help="Link to the original video"
+                ),
+                "Uploaded Video URL": st.column_config.LinkColumn(
+                    "Uploaded Video URL",
+                    help="Link to the uploaded video"
+                )
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        # Add download button for the entire table
+        st.write("")  # Add some spacing
+        csv = df.to_csv(index=False)
+        st.download_button(
+            "📥 Download Summary as CSV",
+            csv,
+            "processed_videos.csv",
+            "text/csv",
+            key='download-csv',
+            use_container_width=True
+        )
 else:
     st.info("Enter a YouTube playlist URL or Google Sheets URL to get started") 

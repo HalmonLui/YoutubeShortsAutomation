@@ -2,6 +2,7 @@ import os
 import streamlit as st
 from datetime import datetime, timedelta
 import pytz
+import time
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 from .api.youtube_api import download_video, upload_video
 from .utils.helpers import format_title, format_description, clean_filename
@@ -14,22 +15,42 @@ def process_videos(videos, youtube_service, output_dir, config):
         videos: List of video dictionaries containing video URLs
         youtube_service: YouTube API service instance
         output_dir: Directory to save downloaded videos
-        config: Dictionary containing processing configuration:
-            - title_template: Template for video titles
-            - description_template: Template for video descriptions
-            - template_number: Starting number for templates
-            - append_enabled: Whether to append videos
-            - append_video_path: Path to video to append
-            - schedule_enabled: Whether to schedule releases
-            - schedule_config: Dictionary with scheduling configuration:
-                - start_date: Start date for releases
-                - start_time: Start time for releases
-                - hours_between: Hours between releases
+        config: Dictionary containing processing configuration
+        
+    Returns:
+        List of dictionaries containing processed video information
     """
+    processed_videos = []
+    total_videos = len(videos)
+    
+    # Create progress tracking elements
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    time_text = st.empty()
+    
+    # Initialize timing variables
+    start_time = time.time()
+    processed_count = 0
+    
     for i, video in enumerate(videos, 1):
         video_url = video.get('youtube_url')
         if not video_url:
             continue
+        
+        # Update progress and timing information
+        progress = (i - 1) / total_videos
+        progress_bar.progress(progress)
+        
+        elapsed_time = time.time() - start_time
+        if processed_count > 0:
+            avg_time_per_video = elapsed_time / processed_count
+            remaining_videos = total_videos - i + 1
+            estimated_time = remaining_videos * avg_time_per_video
+            time_text.text(f"⏱️ Elapsed: {format_time(elapsed_time)} | Estimated remaining: {format_time(estimated_time)}")
+        else:
+            time_text.text(f"⏱️ Elapsed: {format_time(elapsed_time)} | Calculating remaining time...")
+        
+        status_text.text(f"Processing video {i} of {total_videos}: {video_url}")
         
         with st.expander(f"Processing video {i}"):
             st.write(f"Video URL: {video_url}")
@@ -49,12 +70,6 @@ def process_videos(videos, youtube_service, output_dir, config):
                 scheduled_time = base_time + timedelta(hours=(i-1) * schedule_config['hours_between'])
                 st.write(f"Scheduled release time (EST): {scheduled_time.strftime('%Y-%m-%d %I:%M %p')}")
             
-            # Increment template number
-            config['template_number'] += 1
-            
-            st.write(f"Title: {title}")
-            st.write(f"Description: {description}")
-            
             # Process the video
             success = process_single_video(
                 video_url=video_url,
@@ -68,15 +83,53 @@ def process_videos(videos, youtube_service, output_dir, config):
                 video_number=i
             )
             
-            if not success:
-                st.error("Skipping to next video...")
-                continue
+            if success:
+                processed_video = {
+                    'Starting Number': current_number,
+                    'Scheduled Date': scheduled_time.strftime('%Y-%m-%d %I:%M %p EST') if scheduled_time else 'Immediate',
+                    'Original Video URL': video_url,
+                    'Uploaded Video URL': f"https://youtube.com/watch?v={success}" if isinstance(success, str) else 'Processing'
+                }
+                processed_videos.append(processed_video)
+                st.success(f"Successfully processed video {i}")
+                processed_count += 1
+            
+            # Increment template number
+            config['template_number'] += 1
+            
+            st.write(f"Title: {title}")
+            st.write(f"Description: {description}")
+    
+    # Update final progress
+    progress_bar.progress(1.0)
+    final_elapsed = time.time() - start_time
+    time_text.text(f"✅ Completed in {format_time(final_elapsed)} | Processed {processed_count} videos")
+    status_text.text("Processing complete!")
+    
+    return processed_videos
+
+def format_time(seconds):
+    """Format time in seconds to a readable string."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        seconds = seconds % 60
+        return f"{int(minutes)}m {int(seconds)}s"
+    else:
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        seconds = seconds % 60
+        return f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
 
 def process_single_video(video_url, output_dir, youtube_service, title, description, 
                         scheduled_time=None, append_enabled=False, append_video_path=None, 
                         video_number=1):
-    """Process a single video including download, append, and upload."""
+    """Process a single video including download, append, and upload.
     
+    Returns:
+        str: Video ID if successful, False otherwise
+    """
     # Download video
     video_filename = clean_filename(f"video_{video_number}.mp4")
     video_path = os.path.join(output_dir, video_filename)
@@ -119,5 +172,6 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
         video_id = upload_video(youtube_service, video_path, title, description, scheduled_time=scheduled_time)
         if not video_id:
             return False
+        return video_id
     
-    return True 
+    return False 

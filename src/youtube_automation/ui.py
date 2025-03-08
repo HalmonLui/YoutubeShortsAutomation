@@ -85,7 +85,6 @@ def render_template_section():
 
 def render_append_section():
     """Render the video append configuration section."""
-    st.subheader("Video Append Configuration")
     append_enabled = st.checkbox("Append video to downloads", value=False)
     append_video_path = None
 
@@ -108,7 +107,6 @@ def render_append_section():
 
 def render_schedule_section():
     """Render the release schedule configuration section."""
-    st.subheader("Release Schedule Configuration")
     schedule_enabled = st.checkbox("Schedule video releases", value=False)
     schedule_config = None
 
