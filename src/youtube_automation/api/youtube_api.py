@@ -3,6 +3,7 @@ import streamlit as st
 from googleapiclient.http import MediaFileUpload
 import yt_dlp
 import time
+from googleapiclient.errors import HttpError
 
 def download_video(url, output_path, max_retries=3):
     """
@@ -102,23 +103,21 @@ def download_video(url, output_path, max_retries=3):
     
     return None
 
-def upload_video(youtube_service, video_path, title, description, privacy_status="private", scheduled_time=None):
-    """
-    Upload a video to YouTube with optional scheduling.
+def upload_video(youtube, video_path, title, description, privacy_status="private", scheduled_time=None):
+    """Upload a video to YouTube.
     
     Args:
-        youtube_service: YouTube API service instance
-        video_path: Path to the video file
-        title: Video title
-        description: Video description
-        privacy_status: Privacy status (private, unlisted, public)
-        scheduled_time: Optional datetime for scheduled release (in EST)
+        youtube: Authenticated YouTube service instance
+        video_path (str): Path to video file
+        title (str): Video title
+        description (str): Video description
+        privacy_status (str): One of 'private', 'public', 'unlisted', or 'scheduled'
+        scheduled_time (datetime): When to publish the video (if privacy_status is 'scheduled')
+    
+    Returns:
+        str: Video ID if successful, None otherwise
     """
     try:
-        if not os.path.exists(video_path):
-            st.error(f"Video file not found: {video_path}")
-            return None
-
         body = {
             'snippet': {
                 'title': title,
@@ -126,40 +125,40 @@ def upload_video(youtube_service, video_path, title, description, privacy_status
                 'categoryId': '22'  # People & Blogs category
             },
             'status': {
-                'privacyStatus': privacy_status,
+                'privacyStatus': privacy_status if privacy_status != "scheduled" else "private",
                 'selfDeclaredMadeForKids': False
             }
         }
-
-        # Add scheduling if provided
-        if scheduled_time:
+        
+        # Add publish time if scheduled
+        if privacy_status == "scheduled" and scheduled_time:
             body['status']['publishAt'] = scheduled_time.isoformat()
-            # If scheduling, set initial status to private
-            body['status']['privacyStatus'] = 'private'
-            st.write(f"Video will be published at: {scheduled_time.strftime('%Y-%m-%d %I:%M %p')} EST")
 
-        insert_request = youtube_service.videos().insert(
+        # Upload the video
+        insert_request = youtube.videos().insert(
             part=','.join(body.keys()),
             body=body,
             media_body=MediaFileUpload(
-                video_path,
-                chunksize=-1,
+                video_path, 
+                chunksize=-1, 
                 resumable=True
             )
         )
-
-        response = insert_request.execute()
-        video_id = response.get('id')
-        if video_id:
-            if scheduled_time:
-                st.success(f"Successfully scheduled video with ID: {video_id}")
-            else:
-                st.success(f"Successfully uploaded video with ID: {video_id}")
-            return video_id
-        else:
-            st.error("Upload completed but no video ID received")
-            return None
-
+        
+        response = None
+        while response is None:
+            status, response = insert_request.next_chunk()
+            if status:
+                progress = int(status.progress() * 100)
+                st.write(f"Upload progress: {progress}%")
+        
+        video_id = response['id']
+        st.success(f"Video uploaded successfully! Video ID: {video_id}")
+        return video_id
+        
+    except HttpError as e:
+        st.error(f"An HTTP error {e.resp.status} occurred: {e.content}")
+        return None
     except Exception as e:
-        st.error(f"Error uploading video: {str(e)}")
+        st.error(f"An error occurred during upload: {str(e)}")
         return None 

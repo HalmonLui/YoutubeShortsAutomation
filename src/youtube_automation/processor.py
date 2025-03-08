@@ -184,6 +184,7 @@ def process_videos(videos, youtube_service, output_dir, config):
                 youtube_service=youtube_service,
                 title=title,
                 description=description,
+                privacy_status="private",
                 scheduled_time=scheduled_time,
                 append_enabled=config.get('append_enabled', False),
                 append_video_path=config.get('append_video_path'),
@@ -226,9 +227,21 @@ def format_time(seconds):
         return f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
 
 def process_single_video(video_url, output_dir, youtube_service, title, description, 
-                        scheduled_time=None, append_enabled=False, append_video_path=None, 
-                        video_number=1):
+                        privacy_status="private", scheduled_time=None, append_enabled=False, 
+                        append_video_path=None, video_number=1):
     """Process a single video including download, append, and upload.
+    
+    Args:
+        video_url (str): URL of the video to process
+        output_dir (str): Directory to save downloaded videos
+        youtube_service: Authenticated YouTube service instance
+        title (str): Title for the uploaded video
+        description (str): Description for the uploaded video
+        privacy_status (str): One of 'private', 'public', 'unlisted'
+        scheduled_time (datetime): When to publish the video (if privacy_status is 'scheduled')
+        append_enabled (bool): Whether to append another video
+        append_video_path (str): Path to video to append
+        video_number (int): Number in sequence for this video
     
     Returns:
         str: Video ID if successful, False otherwise
@@ -272,7 +285,14 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
         
         # Upload video
         st.write("Uploading video...")
-        video_id = upload_video(youtube_service, video_path, title, description, scheduled_time=scheduled_time)
+        video_id = upload_video(
+            youtube_service, 
+            video_path, 
+            title, 
+            description, 
+            privacy_status=privacy_status if privacy_status != "scheduled" else "private",
+            scheduled_time=scheduled_time
+        )
         if not video_id:
             return False
         return video_id

@@ -107,10 +107,19 @@ def render_append_section():
 
 def render_schedule_section():
     """Render the release schedule configuration section."""
-    schedule_enabled = st.checkbox("Schedule video releases", value=False)
+    st.subheader("Video Privacy & Scheduling")
+    
+    # Privacy setting dropdown
+    privacy_status = st.selectbox(
+        "Video Privacy Setting",
+        ["private", "public", "unlisted", "scheduled"],
+        help="Choose the privacy setting for uploaded videos"
+    )
+    
     schedule_config = None
-
-    if schedule_enabled:
+    
+    # Only show scheduler if "scheduled" is selected
+    if privacy_status == "scheduled":
         col1, col2 = st.columns(2)
         with col1:
             start_date = st.date_input(
@@ -150,8 +159,8 @@ def render_schedule_section():
         }
 
     return {
-        'enabled': schedule_enabled,
-        'config': schedule_config
+        'privacy_status': privacy_status,
+        'schedule_config': schedule_config if privacy_status == "scheduled" else None
     }
 
 def render_pattern_search_section():
@@ -221,7 +230,8 @@ def get_processing_config():
         'template_number': template_config['template_number'],
         'append_enabled': append_config['enabled'],
         'append_video_path': append_config['video_path'],
-        'schedule_enabled': schedule_config['enabled'],
-        'schedule_config': schedule_config['config'],
-        'search_patterns': pattern_config
+        'schedule_enabled': schedule_config['schedule_config'] is not None,
+        'schedule_config': schedule_config['schedule_config'],
+        'search_patterns': pattern_config,
+        'privacy_status': schedule_config['privacy_status']
     } 
