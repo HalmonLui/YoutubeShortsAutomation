@@ -2,12 +2,14 @@ import os
 import re
 import requests
 import streamlit as st
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
-from pytube import YouTube
+import gspread
+import json
+import webbrowser
 from ..models.dummy_models import DummyGoogleSheets, DummyYouTubeService
 
 # Google Sheets API setup
@@ -33,24 +35,81 @@ def setup_google_sheets(dev_mode=True):
         raise
 
 def get_youtube_service(dev_mode=True):
+    """Get an authenticated YouTube service instance."""
     if dev_mode:
         st.warning("⚠️ Running in development mode - YouTube integration is mocked")
         return DummyYouTubeService()
     
-    creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    try:
+        if not os.path.exists('client_secrets.json'):
+            st.error("❌ Missing client_secrets.json file.")
+            return DummyYouTubeService()
+
+        # Initialize session state
+        if 'credentials' not in st.session_state:
+            st.session_state.credentials = None
+        if 'auth_in_progress' not in st.session_state:
+            st.session_state.auth_in_progress = False
+
+        creds = st.session_state.credentials
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                st.session_state.credentials = creds
+            else:
+                # Check for auth code in query parameters
+                query_params = st.experimental_get_query_params()
+                code = query_params.get("code", [None])[0]
+                
+                if code and st.session_state.auth_in_progress:
+                    try:
+                        flow = Flow.from_client_secrets_file(
+                            'client_secrets.json',
+                            scopes=SCOPES,
+                            redirect_uri='http://localhost:8501/'
+                        )
+                        flow.fetch_token(code=code)
+                        st.session_state.credentials = flow.credentials
+                        st.session_state.auth_in_progress = False
+                        st.success("✅ Authentication successful!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Authentication failed: {str(e)}")
+                        st.session_state.auth_in_progress = False
+                        return DummyYouTubeService()
+                else:
+                    if not st.session_state.auth_in_progress:
+                        st.markdown("""
+                        ### YouTube Authentication Required
+                        Click the button below to authenticate with your Google account.
+                        """)
+                        
+                        if st.button("🔐 Login with Google"):
+                            flow = Flow.from_client_secrets_file(
+                                'client_secrets.json',
+                                scopes=SCOPES,
+                                redirect_uri='http://localhost:8501/'
+                            )
+                            auth_url, _ = flow.authorization_url(
+                                access_type='offline',
+                                include_granted_scopes='true'
+                            )
+                            st.session_state.auth_in_progress = True
+                            st.markdown(f'<meta http-equiv="refresh" content="0;url={auth_url}">', unsafe_allow_html=True)
+                            st.stop()
+                        return DummyYouTubeService()
+                    else:
+                        st.info("🔄 Waiting for authentication...")
+                        return DummyYouTubeService()
+
+        return build('youtube', 'v3', credentials=creds)
     
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-    
-    return build('youtube', 'v3', credentials=creds)
+    except Exception as e:
+        st.error(f"Error setting up YouTube service: {str(e)}")
+        if dev_mode:
+            return DummyYouTubeService()
+        raise
 
 def get_playlist_videos(playlist_url):
     try:
