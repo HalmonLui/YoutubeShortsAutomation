@@ -154,11 +154,66 @@ def render_schedule_section():
         'config': schedule_config
     }
 
+def render_pattern_search_section():
+    """Render the pattern search configuration section."""
+    st.write("Pattern Search Configuration")
+    st.info("Search for patterns in original video titles/descriptions. Use {#} to match any number.")
+    
+    patterns = []
+    
+    # Initialize session state for patterns if not exists
+    if 'search_patterns' not in st.session_state:
+        st.session_state.search_patterns = []
+    
+    # Add pattern button
+    if st.button("Add Pattern"):
+        st.session_state.search_patterns.append({"pattern": "", "column_name": ""})
+        st.rerun()
+    
+    # Pattern inputs
+    patterns_to_remove = []
+    for i, pattern_dict in enumerate(st.session_state.search_patterns):
+        col1, col2, col3 = st.columns([3, 3, 1])
+        with col1:
+            pattern = st.text_input(
+                "Search Pattern",
+                value=pattern_dict.get("pattern", ""),
+                key=f"pattern_{i}",
+                help="Use {#} to match any number (e.g., 'F{#}' will match 'F1', 'F2', etc.)"
+            )
+        with col2:
+            column_name = st.text_input(
+                "Column Name",
+                value=pattern_dict.get("column_name", ""),
+                key=f"column_{i}",
+                help="Name of the column in the results table"
+            )
+        with col3:
+            if st.button("❌", key=f"remove_{i}"):
+                patterns_to_remove.append(i)
+        
+        if pattern and column_name:
+            patterns.append({
+                "pattern": pattern,
+                "column_name": column_name
+            })
+            # Update session state
+            st.session_state.search_patterns[i]["pattern"] = pattern
+            st.session_state.search_patterns[i]["column_name"] = column_name
+    
+    # Remove patterns marked for deletion
+    for i in reversed(patterns_to_remove):
+        st.session_state.search_patterns.pop(i)
+        st.rerun()
+    
+    return patterns
+
 def get_processing_config():
     """Get the complete processing configuration."""
     template_config = render_template_section()
     append_config = render_append_section()
     schedule_config = render_schedule_section()
+    pattern_config = render_pattern_search_section()
 
     return {
         'title_template': template_config['title_template'],
@@ -167,5 +222,6 @@ def get_processing_config():
         'append_enabled': append_config['enabled'],
         'append_video_path': append_config['video_path'],
         'schedule_enabled': schedule_config['enabled'],
-        'schedule_config': schedule_config['config']
+        'schedule_config': schedule_config['config'],
+        'search_patterns': pattern_config
     } 

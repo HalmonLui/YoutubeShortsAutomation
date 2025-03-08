@@ -3,23 +3,82 @@ import streamlit as st
 from datetime import datetime, timedelta
 import pytz
 import time
+import re
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 from .api.youtube_api import download_video, upload_video
 from .utils.helpers import format_title, format_description, clean_filename
 
-def process_videos(videos, youtube_service, output_dir, config):
+def extract_pattern_match(text, pattern):
     """
-    Process a list of videos according to the given configuration.
+    Extract pattern matches from text, where {#} in the pattern matches any number.
+    Returns a list of all matches found, empty list if none found.
+    """
+    if not text or not pattern:
+        st.write("❌ Text or pattern is empty")
+        return []
     
-    Args:
-        videos: List of video dictionaries containing video URLs
-        youtube_service: YouTube API service instance
-        output_dir: Directory to save downloaded videos
-        config: Dictionary containing processing configuration
+    try:
+        # Replace {#} with regex pattern for numbers and make case insensitive
+        pattern_regex = pattern.replace('{#}', r'(\d+)')
+        st.write(f"🔍 Text to search: '{text}'")
+        st.write(f"🔍 Pattern before conversion: '{pattern}'")
+        st.write(f"🔍 Pattern after conversion: '{pattern_regex}'")
         
-    Returns:
-        List of dictionaries containing processed video information
-    """
+        # Case insensitive search for all matches
+        matches = re.finditer(pattern_regex, text, re.IGNORECASE)
+        found_matches = [match.group(0) for match in matches]
+        
+        if found_matches:
+            st.write(f"✅ Found matches: {found_matches}")
+            return found_matches
+        st.write("❌ No matches found")
+        return []
+    except Exception as e:
+        st.error(f"Error in pattern matching: {str(e)}")
+        return []
+
+def extract_video_id(url):
+    """Extract video ID from YouTube URL."""
+    if '/shorts/' in url:
+        # Handle shorts URL format
+        match = re.search(r'/shorts/([a-zA-Z0-9_-]{11})', url)
+    else:
+        # Handle regular video URL format
+        match = re.search(r'(?:v=|/)([a-zA-Z0-9_-]{11})(?:\?|&|/|$)', url)
+    
+    if match:
+        return match.group(1)
+    return None
+
+def get_video_info(video_url, youtube_service=None):
+    """Get video title and description from YouTube using yt-dlp."""
+    try:
+        import yt_dlp
+        st.write(f"📥 Fetching info for video: {video_url}")
+        
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            video_info = {
+                'title': info.get('title', ''),
+                'description': info.get('description', '')
+            }
+            
+        st.write(f"📝 Video title: '{video_info['title']}'")
+        st.write(f"📝 Video description: '{video_info['description']}'")
+        return video_info
+        
+    except Exception as e:
+        st.error(f"Could not fetch video info: {str(e)}")
+        return {'title': '', 'description': ''}
+
+def process_videos(videos, youtube_service, output_dir, config):
+    """Process a list of videos according to the given configuration."""
     processed_videos = []
     total_videos = len(videos)
     
@@ -55,7 +114,13 @@ def process_videos(videos, youtube_service, output_dir, config):
         with st.expander(f"Processing video {i}"):
             st.write(f"Video URL: {video_url}")
             
-            # Format title and description
+            # Get original video info for pattern matching
+            original_video_info = get_video_info(video_url, youtube_service)
+            st.write("📥 Original video information:")
+            st.write(f"Title: {original_video_info['title']}")
+            st.write(f"Description: {original_video_info['description']}")
+            
+            # Format title and description for the new video
             current_number = config['template_number']
             title = format_title(config['title_template'], number=current_number, original_url=video_url)
             description = format_description(config['description_template'], number=current_number, original_url=video_url)
@@ -69,6 +134,48 @@ def process_videos(videos, youtube_service, output_dir, config):
                 base_time = est_tz.localize(base_time)
                 scheduled_time = base_time + timedelta(hours=(i-1) * schedule_config['hours_between'])
                 st.write(f"Scheduled release time (EST): {scheduled_time.strftime('%Y-%m-%d %I:%M %p')}")
+            
+            # Create processed_video dictionary before processing to store pattern matches
+            processed_video = {
+                'Starting Number': current_number,
+                'Scheduled Date': scheduled_time.strftime('%Y-%m-%d %I:%M %p EST') if scheduled_time else 'Immediate',
+                'Original Video URL': video_url,
+                'Uploaded Video URL': 'Processing'  # Will be updated after successful upload
+            }
+            
+            # Add pattern matches from original video info
+            if config.get('search_patterns'):
+                st.write("🔎 Starting pattern matching process...")
+                st.write(f"📝 Original video title to search: '{original_video_info['title']}'")
+                
+                for pattern_config in config['search_patterns']:
+                    pattern = pattern_config['pattern']
+                    column_name = pattern_config['column_name']
+                    st.write(f"\n📌 Processing pattern: '{pattern}' for column: '{column_name}'")
+                    
+                    # First, search in title
+                    title_matches = extract_pattern_match(original_video_info['title'], pattern)
+                    if title_matches:
+                        # Use first title match if multiple found
+                        match = title_matches[0]
+                        st.write(f"✅ Found match in title: '{match}' (prioritized)")
+                        processed_video[column_name] = match
+                        st.write(f"✅ Set column '{column_name}' to value: '{match}'")
+                    else:
+                        st.write("⏳ No match in title, checking description...")
+                        # If no title match, search in description
+                        desc_matches = extract_pattern_match(original_video_info['description'], pattern)
+                        if desc_matches:
+                            # Use first description match
+                            match = desc_matches[0]
+                            st.write(f"✅ Found match in description: '{match}' (first match)")
+                            processed_video[column_name] = match
+                            st.write(f"✅ Set column '{column_name}' to value: '{match}'")
+                        else:
+                            processed_video[column_name] = ''
+                            st.write(f"❌ No matches found, set column '{column_name}' to empty string")
+                    
+                    st.write(f"👉 Final value for column '{column_name}': '{processed_video[column_name]}'")
             
             # Process the video
             success = process_single_video(
@@ -84,12 +191,8 @@ def process_videos(videos, youtube_service, output_dir, config):
             )
             
             if success:
-                processed_video = {
-                    'Starting Number': current_number,
-                    'Scheduled Date': scheduled_time.strftime('%Y-%m-%d %I:%M %p EST') if scheduled_time else 'Immediate',
-                    'Original Video URL': video_url,
-                    'Uploaded Video URL': f"https://youtube.com/watch?v={success}" if isinstance(success, str) else 'Processing'
-                }
+                # Update the upload URL after successful processing
+                processed_video['Uploaded Video URL'] = f"https://youtube.com/watch?v={success}" if isinstance(success, str) else 'Processing'
                 processed_videos.append(processed_video)
                 st.success(f"Successfully processed video {i}")
                 processed_count += 1
@@ -97,8 +200,8 @@ def process_videos(videos, youtube_service, output_dir, config):
             # Increment template number
             config['template_number'] += 1
             
-            st.write(f"Title: {title}")
-            st.write(f"Description: {description}")
+            st.write(f"New Title: {title}")
+            st.write(f"New Description: {description}")
     
     # Update final progress
     progress_bar.progress(1.0)

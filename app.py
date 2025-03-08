@@ -40,71 +40,101 @@ input_method = get_input_method()
 # Get processing configuration
 config = get_processing_config()
 
-# Get videos based on input method
+# Initialize variables for video URLs
 videos = None
-if input_method == "YouTube Playlist":
-    playlist_url = st.text_input("Enter YouTube Playlist URL")
-    if playlist_url and validate_url(playlist_url):
-        videos = get_playlist_videos(playlist_url)
-else:
-    spreadsheet_url = st.text_input("Enter Google Sheets URL")
-    if spreadsheet_url:
-        sheets_client = setup_google_sheets(dev_mode)
-        videos = get_spreadsheet_videos(sheets_client, spreadsheet_url)
 
-# Process videos if available
-if videos:
-    st.subheader("Processing Videos")
-    
-    # Create output directory
-    output_dir = ensure_directory("downloads")
-    
-    # Initialize YouTube service
-    youtube_service = get_youtube_service(dev_mode)
-    
-    # Process videos and get results
-    processed_videos = process_videos(videos, youtube_service, output_dir, config)
-    
-    # Display results in a table
-    if processed_videos:
-        st.subheader("Processed Videos Summary")
-        df = pd.DataFrame(processed_videos)
-        
-        # Display the table with highlighting
-        st.dataframe(
-            df,
-            column_config={
-                "Starting Number": st.column_config.NumberColumn(
-                    "Starting Number",
-                    help="Template number used for the video"
-                ),
-                "Scheduled Date": st.column_config.TextColumn(
-                    "Scheduled Date",
-                    help="Scheduled release date and time (EST)"
-                ),
-                "Original Video URL": st.column_config.LinkColumn(
-                    "Original Video URL",
-                    help="Link to the original video"
-                ),
-                "Uploaded Video URL": st.column_config.LinkColumn(
-                    "Uploaded Video URL",
-                    help="Link to the uploaded video"
-                )
-            },
-            hide_index=True,
-            use_container_width=True
+# URL input container
+url_container = st.container()
+with url_container:
+    if input_method == "YouTube Playlist":
+        url_input = st.text_input(
+            "Enter YouTube Playlist URL",
+            key="playlist_url",
+            help="Paste a YouTube playlist URL here"
         )
-        
-        # Add download button for the entire table
-        st.write("")  # Add some spacing
-        csv = df.to_csv(index=False)
-        st.download_button(
-            "📥 Download Summary as CSV",
-            csv,
-            "processed_videos.csv",
-            "text/csv",
-            key='download-csv',
-            use_container_width=True
+        if url_input and not validate_url(url_input):
+            st.error("Please enter a valid YouTube URL")
+    else:
+        url_input = st.text_input(
+            "Enter Google Sheets URL",
+            key="sheets_url",
+            help="Paste a Google Sheets URL here"
         )
-else:
+
+# Add start button - enabled as soon as there's any text in the URL field
+start_button = st.button(
+    "Start Processing",
+    type="primary",
+    disabled=not bool(url_input),
+    help="Click to start processing videos"
+)
+
+if start_button:
+    # Get videos based on input method
+    if input_method == "YouTube Playlist":
+        if validate_url(url_input):
+            videos = get_playlist_videos(url_input)
+        else:
+            st.error("Please enter a valid YouTube URL")
+    else:
+        sheets_client = setup_google_sheets(dev_mode)
+        videos = get_spreadsheet_videos(sheets_client, url_input)
+
+    # Process videos if available
+    if videos:
+        st.subheader("Processing Videos")
+        
+        # Create output directory
+        output_dir = ensure_directory("downloads")
+        
+        # Initialize YouTube service
+        youtube_service = get_youtube_service(dev_mode)
+        
+        # Process videos and get results
+        processed_videos = process_videos(videos, youtube_service, output_dir, config)
+        
+        # Display results in a table
+        if processed_videos:
+            st.subheader("Processed Videos Summary")
+            df = pd.DataFrame(processed_videos)
+            
+            # Display the table with highlighting
+            st.dataframe(
+                df,
+                column_config={
+                    "Starting Number": st.column_config.NumberColumn(
+                        "Starting Number",
+                        help="Template number used for the video"
+                    ),
+                    "Scheduled Date": st.column_config.TextColumn(
+                        "Scheduled Date",
+                        help="Scheduled release date and time (EST)"
+                    ),
+                    "Original Video URL": st.column_config.LinkColumn(
+                        "Original Video URL",
+                        help="Link to the original video"
+                    ),
+                    "Uploaded Video URL": st.column_config.LinkColumn(
+                        "Uploaded Video URL",
+                        help="Link to the uploaded video"
+                    )
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            # Add download button for the entire table
+            st.write("")  # Add some spacing
+            csv = df.to_csv(index=False)
+            st.download_button(
+                "📥 Download Summary as CSV",
+                csv,
+                "processed_videos.csv",
+                "text/csv",
+                key='download-csv',
+                use_container_width=True
+            )
+    elif videos is not None:  # Only show error if videos were attempted to be fetched
+        st.error("No videos found in the provided URL")
+elif not url_input:
     st.info("Enter a YouTube playlist URL or Google Sheets URL to get started") 
