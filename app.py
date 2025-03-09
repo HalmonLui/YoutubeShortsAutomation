@@ -96,44 +96,58 @@ if start_button:
         # Display results in a table
         if processed_videos:
             st.subheader("Processed Videos Summary")
-            df = pd.DataFrame(processed_videos)
+            st.write(f"Total videos processed: {len(processed_videos)}")
             
-            # Display the table with highlighting
-            st.dataframe(
-                df,
-                column_config={
-                    "Starting Number": st.column_config.NumberColumn(
-                        "Starting Number",
-                        help="Template number used for the video"
-                    ),
-                    "Scheduled Date": st.column_config.TextColumn(
-                        "Scheduled Date",
-                        help="Scheduled release date and time (EST)"
-                    ),
-                    "Original Video URL": st.column_config.LinkColumn(
-                        "Original Video URL",
-                        help="Link to the original video"
-                    ),
-                    "Uploaded Video URL": st.column_config.LinkColumn(
-                        "Uploaded Video URL",
-                        help="Link to the uploaded video"
-                    )
-                },
-                hide_index=True,
-                use_container_width=True
-            )
-            
-            # Add download button for the entire table
-            st.write("")  # Add some spacing
-            csv = df.to_csv(index=False)
-            st.download_button(
-                "📥 Download Summary as CSV",
-                csv,
-                "processed_videos.csv",
-                "text/csv",
-                key='download-csv',
-                use_container_width=True
-            )
+            try:
+                # Create DataFrame
+                df = pd.DataFrame(processed_videos)
+                st.write("DataFrame created with columns:", df.columns.tolist())
+                
+                # Display the table with highlighting
+                st.dataframe(
+                    df,
+                    column_config={
+                        "Starting Number": st.column_config.NumberColumn(
+                            "Starting Number",
+                            help="Template number used for the video"
+                        ),
+                        "Channel Name": st.column_config.TextColumn(
+                            "Channel Name",
+                            help="Original channel name"
+                        ),
+                        "Scheduled Date": st.column_config.TextColumn(
+                            "Scheduled Date",
+                            help="Scheduled release date and time (EST)"
+                        ),
+                        "Original Video URL": st.column_config.TextColumn(
+                            "Original Video URL",
+                            help="Link to the original video"
+                        ),
+                        "Uploaded Video URL": st.column_config.TextColumn(
+                            "Uploaded Video URL",
+                            help="Link to the uploaded video"
+                        )
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # Add download button for the entire table
+                st.write("")  # Add some spacing
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    "📥 Download Summary as CSV",
+                    csv,
+                    "processed_videos.csv",
+                    "text/csv",
+                    key='download-csv',
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Error displaying results table: {str(e)}")
+                st.write("Raw data:", processed_videos)
+        else:
+            st.warning("No videos were processed successfully")
     elif videos is not None:  # Only show error if videos were attempted to be fetched
         st.error("No videos found in the provided URL")
 elif not url_input:

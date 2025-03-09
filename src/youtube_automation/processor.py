@@ -53,7 +53,7 @@ def extract_video_id(url):
     return None
 
 def get_video_info(video_url, youtube_service=None):
-    """Get video title and description from YouTube using yt-dlp."""
+    """Get video title, description, and channel name from YouTube using yt-dlp."""
     try:
         import yt_dlp
         st.write(f"📥 Fetching info for video: {video_url}")
@@ -68,16 +68,18 @@ def get_video_info(video_url, youtube_service=None):
             info = ydl.extract_info(video_url, download=False)
             video_info = {
                 'title': info.get('title', ''),
-                'description': info.get('description', '')
+                'description': info.get('description', ''),
+                'channel': info.get('uploader', '')  # Add channel name
             }
             
         st.write(f"📝 Video title: '{video_info['title']}'")
+        st.write(f"📝 Channel: '{video_info['channel']}'")
         st.write(f"📝 Video description: '{video_info['description']}'")
         return video_info
         
     except Exception as e:
         st.error(f"Could not fetch video info: {str(e)}")
-        return {'title': '', 'description': ''}
+        return {'title': '', 'description': '', 'channel': ''}
 
 def process_videos(videos, youtube_service, output_dir, config):
     """Process a list of videos according to the given configuration."""
@@ -120,6 +122,7 @@ def process_videos(videos, youtube_service, output_dir, config):
             original_video_info = get_video_info(video_url, youtube_service)
             st.write("📥 Original video information:")
             st.write(f"Title: {original_video_info['title']}")
+            st.write(f"Channel: {original_video_info['channel']}")
             st.write(f"Description: {original_video_info['description']}")
             
             # Format title and description for the new video
@@ -140,6 +143,7 @@ def process_videos(videos, youtube_service, output_dir, config):
             # Create processed_video dictionary before processing to store pattern matches
             processed_video = {
                 'Starting Number': current_number,
+                'Channel Name': original_video_info['channel'],  # Add channel name
                 'Scheduled Date': scheduled_time.strftime('%Y-%m-%d %I:%M %p EST') if scheduled_time else 'Immediate',
                 'Original Video URL': video_url,
                 'Uploaded Video URL': 'Processing'  # Will be updated after successful upload
@@ -186,7 +190,7 @@ def process_videos(videos, youtube_service, output_dir, config):
                 youtube_service=youtube_service,
                 title=title,
                 description=description,
-                privacy_status="private",
+                privacy_status=config.get('privacy_status', 'private'),
                 scheduled_time=scheduled_time,
                 append_enabled=config.get('append_enabled', False),
                 append_video_path=config.get('append_video_path'),
@@ -199,6 +203,11 @@ def process_videos(videos, youtube_service, output_dir, config):
                 processed_videos.append(processed_video)
                 st.success(f"Successfully processed video {i}")
                 processed_count += 1
+            else:
+                st.error(f"Failed to process video {i}")
+                # Still add the video to the list with error status
+                processed_video['Uploaded Video URL'] = 'Failed'
+                processed_videos.append(processed_video)
             
             # Increment template number
             config['template_number'] += 1
@@ -211,6 +220,12 @@ def process_videos(videos, youtube_service, output_dir, config):
     final_elapsed = time.time() - start_time
     time_text.text(f"✅ Completed in {format_time(final_elapsed)} | Processed {processed_count} videos")
     status_text.text("Processing complete!")
+    
+    # Make sure we have at least one processed video
+    if not processed_videos:
+        st.warning("No videos were successfully processed")
+    else:
+        st.success(f"Successfully processed {len(processed_videos)} videos")
     
     return processed_videos
 
