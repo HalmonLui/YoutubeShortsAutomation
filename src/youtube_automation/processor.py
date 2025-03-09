@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 import pytz
 import time
 import re
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+import cv2
+import numpy as np
+from moviepy.editor import VideoFileClip, concatenate_videoclips, ImageSequenceClip
 from .api.youtube_api import download_video, upload_video
 from .utils.helpers import format_title, format_description, clean_filename
 
@@ -226,26 +228,88 @@ def format_time(seconds):
         seconds = seconds % 60
         return f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
 
+def resize_video_opencv(input_path, output_path, target_width, target_height):
+    """Resize video using OpenCV while maintaining aspect ratio and adding black padding if needed."""
+    try:
+        # Open the video file
+        cap = cv2.VideoCapture(input_path)
+        
+        # Get original video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Calculate scaling factor to maintain aspect ratio
+        scale_w = target_width / orig_width
+        scale_h = target_height / orig_height
+        scale = min(scale_w, scale_h)
+        
+        # Calculate new dimensions that maintain aspect ratio
+        new_width = int(orig_width * scale)
+        new_height = int(orig_height * scale)
+        
+        # Calculate padding
+        pad_left = (target_width - new_width) // 2
+        pad_top = (target_height - new_height) // 2
+        
+        # Create video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
+        
+        # Process each frame
+        frames = []
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # Resize frame maintaining aspect ratio
+            resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
+            
+            # Create black canvas of target size
+            canvas = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+            
+            # Place resized frame in center of canvas
+            canvas[pad_top:pad_top + new_height, pad_left:pad_left + new_width] = resized_frame
+            
+            frames.append(canvas)
+            out.write(canvas)
+        
+        # Release resources
+        cap.release()
+        out.release()
+        
+        # Get audio from original clip and apply to resized video
+        original_clip = VideoFileClip(input_path)
+        resized_clip = VideoFileClip(output_path)
+        
+        # Add audio to resized clip
+        final_clip = resized_clip.set_audio(original_clip.audio)
+        
+        # Save final video with audio
+        final_clip.write_videofile(
+            output_path,
+            codec='libx264',
+            audio_codec='aac',
+            temp_audiofile='temp-audio.m4a',
+            remove_temp=True
+        )
+        
+        # Clean up
+        original_clip.close()
+        resized_clip.close()
+        final_clip.close()
+        
+        return True
+    except Exception as e:
+        st.error(f"Error in resize_video_opencv: {str(e)}")
+        return False
+
 def process_single_video(video_url, output_dir, youtube_service, title, description, 
                         privacy_status="private", scheduled_time=None, append_enabled=False, 
                         append_video_path=None, video_number=1):
-    """Process a single video including download, append, and upload.
-    
-    Args:
-        video_url (str): URL of the video to process
-        output_dir (str): Directory to save downloaded videos
-        youtube_service: Authenticated YouTube service instance
-        title (str): Title for the uploaded video
-        description (str): Description for the uploaded video
-        privacy_status (str): One of 'private', 'public', 'unlisted'
-        scheduled_time (datetime): When to publish the video (if privacy_status is 'scheduled')
-        append_enabled (bool): Whether to append another video
-        append_video_path (str): Path to video to append
-        video_number (int): Number in sequence for this video
-    
-    Returns:
-        str: Video ID if successful, False otherwise
-    """
+    """Process a single video including download, append, and upload."""
     # Download video
     video_filename = clean_filename(f"video_{video_number}.mp4")
     video_path = os.path.join(output_dir, video_filename)
@@ -259,29 +323,39 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
         if append_enabled and append_video_path and os.path.exists(append_video_path):
             try:
                 st.write("Appending video...")
-                # Load both videos
+                # Load main video to get dimensions
                 main_clip = VideoFileClip(video_path)
-                append_clip = VideoFileClip(append_video_path)
-                
-                # Get dimensions
                 main_width, main_height = main_clip.size
+                main_clip.close()
+                
+                # Load append video to get dimensions
+                append_clip = VideoFileClip(append_video_path)
                 append_width, append_height = append_clip.size
+                append_clip.close()
                 
                 st.write(f"Main video resolution: {main_width}x{main_height}")
                 st.write(f"Append video resolution: {append_width}x{append_height}")
                 
-                # Resize append clip if resolutions don't match
+                # Resize append video if resolutions don't match
                 if main_width != append_width or main_height != append_height:
                     st.write(f"Resizing append video to match main video resolution: {main_width}x{main_height}")
-                    append_clip = append_clip.resize(
-                        width=main_width,
-                        height=main_height
-                    )
+                    resized_append_path = os.path.join(output_dir, f"resized_append_{video_filename}")
+                    
+                    # Resize using OpenCV
+                    if not resize_video_opencv(append_video_path, resized_append_path, main_width, main_height):
+                        st.error("Failed to resize append video")
+                        return False
+                    
+                    append_video_path = resized_append_path
+                
+                # Load videos for concatenation
+                main_clip = VideoFileClip(video_path)
+                append_clip = VideoFileClip(append_video_path)
                 
                 # Concatenate videos
                 final_clip = concatenate_videoclips([main_clip, append_clip])
                 
-                # Save the final video with the same resolution
+                # Save the final video
                 final_path = os.path.join(output_dir, f"final_{video_filename}")
                 st.write("Saving final video...")
                 final_clip.write_videofile(
@@ -292,7 +366,7 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
                     remove_temp=True
                 )
                 
-                # Close clips to free up memory
+                # Close clips
                 main_clip.close()
                 append_clip.close()
                 final_clip.close()
