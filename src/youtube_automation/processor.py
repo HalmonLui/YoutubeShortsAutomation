@@ -263,12 +263,34 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
                 main_clip = VideoFileClip(video_path)
                 append_clip = VideoFileClip(append_video_path)
                 
+                # Get dimensions
+                main_width, main_height = main_clip.size
+                append_width, append_height = append_clip.size
+                
+                st.write(f"Main video resolution: {main_width}x{main_height}")
+                st.write(f"Append video resolution: {append_width}x{append_height}")
+                
+                # Resize append clip if resolutions don't match
+                if main_width != append_width or main_height != append_height:
+                    st.write(f"Resizing append video to match main video resolution: {main_width}x{main_height}")
+                    append_clip = append_clip.resize(
+                        width=main_width,
+                        height=main_height
+                    )
+                
                 # Concatenate videos
                 final_clip = concatenate_videoclips([main_clip, append_clip])
                 
-                # Save the final video
+                # Save the final video with the same resolution
                 final_path = os.path.join(output_dir, f"final_{video_filename}")
-                final_clip.write_videofile(final_path)
+                st.write("Saving final video...")
+                final_clip.write_videofile(
+                    final_path,
+                    codec='libx264',
+                    audio_codec='aac',
+                    temp_audiofile='temp-audio.m4a',
+                    remove_temp=True
+                )
                 
                 # Close clips to free up memory
                 main_clip.close()
