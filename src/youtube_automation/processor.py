@@ -92,24 +92,36 @@ def process_videos(videos, youtube_service, output_dir, config):
     # Initialize timing variables
     start_time = time.time()
     processed_count = 0
+    last_update = start_time
+    update_interval = 0.1  # Update every 0.1 seconds
+    
+    def update_time_display():
+        """Update the time display with current elapsed time and estimates."""
+        current_time = time.time()
+        elapsed_time = current_time - start_time
+        
+        if processed_count > 0:
+            avg_time_per_video = elapsed_time / processed_count
+            remaining_videos = total_videos - processed_count
+            estimated_time = remaining_videos * avg_time_per_video
+            time_text.text(f"⏱️ Elapsed: {format_time(elapsed_time)} | Estimated remaining: {format_time(estimated_time)}")
+        else:
+            time_text.text(f"⏱️ Elapsed: {format_time(elapsed_time)} | Calculating remaining time...")
     
     for i, video in enumerate(videos, 1):
         video_url = video.get('youtube_url')
         if not video_url:
             continue
         
-        # Update progress and timing information
+        # Update progress
         progress = (i - 1) / total_videos
         progress_bar.progress(progress)
         
-        elapsed_time = time.time() - start_time
-        if processed_count > 0:
-            avg_time_per_video = elapsed_time / processed_count
-            remaining_videos = total_videos - i + 1
-            estimated_time = remaining_videos * avg_time_per_video
-            time_text.text(f"⏱️ Elapsed: {format_time(elapsed_time)} | Estimated remaining: {format_time(estimated_time)}")
-        else:
-            time_text.text(f"⏱️ Elapsed: {format_time(elapsed_time)} | Calculating remaining time...")
+        # Update time display more frequently
+        current_time = time.time()
+        if current_time - last_update >= update_interval:
+            update_time_display()
+            last_update = current_time
         
         status_text.text(f"Processing video {i} of {total_videos}: {video_url}")
         
@@ -205,6 +217,10 @@ def process_videos(videos, youtube_service, output_dir, config):
             
             st.write(f"New Title: {title}")
             st.write(f"New Description: {description}")
+            
+            # Update time display after each video is processed
+            if success:
+                update_time_display()
     
     # Update final progress
     progress_bar.progress(1.0)
