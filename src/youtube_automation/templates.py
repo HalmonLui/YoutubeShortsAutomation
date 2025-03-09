@@ -17,11 +17,21 @@ def load_templates():
 def save_template(name, title_template, description_template):
     """Save a new template to the templates.json file."""
     templates = load_templates()
-    templates['templates'].append({
-        'name': name,
-        'title': title_template,
-        'description': description_template
-    })
+    
+    # Check if template with this name already exists
+    existing_template = next((t for t in templates['templates'] if t['name'] == name), None)
+    if existing_template:
+        # Update existing template
+        existing_template['title'] = title_template
+        existing_template['description'] = description_template
+    else:
+        # Add new template
+        templates['templates'].append({
+            'name': name,
+            'title': title_template,
+            'description': description_template
+        })
+    
     with open(TEMPLATES_FILE, 'w') as f:
         json.dump(templates, f, indent=2)
 
@@ -36,22 +46,11 @@ def load_template_callback(template_name):
     """Callback function for loading a template."""
     templates = load_templates()
     template = next(t for t in templates['templates'] if t['name'] == template_name)
-    # Store values in session state for next render
-    st.session_state.next_title = template['title']
-    st.session_state.next_description = template['description']
+    st.session_state.title_template_input = template['title']
+    st.session_state.description_template_input = template['description']
 
 def render_template_manager():
     """Render the template manager UI in Streamlit."""
-    # Initialize session state for next values if not present
-    if 'next_title' not in st.session_state:
-        st.session_state.next_title = st.session_state.title_template
-    if 'next_description' not in st.session_state:
-        st.session_state.next_description = st.session_state.description_template
-
-    # Update the current values from next values if they exist
-    st.session_state.title_template = st.session_state.next_title
-    st.session_state.description_template = st.session_state.next_description
-
     st.subheader("Template Manager")
     
     # Load existing templates
@@ -63,12 +62,19 @@ def render_template_manager():
         st.write("Save Current Template")
         template_name = st.text_input("Template Name", key="save_template_name")
         if st.button("Save Template") and template_name:
-            save_template(
-                template_name,
-                st.session_state.title_template,
-                st.session_state.description_template
-            )
-            st.success(f"Template '{template_name}' saved!")
+            # Get current values directly from the input fields' session state
+            current_title = st.session_state.get('title_template_input', '')
+            current_description = st.session_state.get('description_template_input', '')
+            
+            if current_title and current_description:
+                save_template(
+                    template_name,
+                    current_title,
+                    current_description
+                )
+                st.success(f"Template '{template_name}' saved!")
+            else:
+                st.error("Please enter both title and description templates before saving.")
     
     with col2:
         st.write("Load Template")
@@ -80,8 +86,10 @@ def render_template_manager():
             )
             col3, col4 = st.columns(2)
             with col3:
-                if st.button("Load", key="load_template_button", on_click=load_template_callback, args=(selected_template,)):
+                if st.button("Load", key="load_template_button"):
+                    load_template_callback(selected_template)
                     st.success("Template loaded!")
+                    st.rerun()
             with col4:
                 if st.button("Delete", key="delete_template_button"):
                     delete_template(selected_template)
