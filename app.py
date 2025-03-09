@@ -103,6 +103,9 @@ if start_button:
                 df = pd.DataFrame(processed_videos)
                 st.write("DataFrame created with columns:", df.columns.tolist())
                 
+                # Reorder columns
+                df = df[["Starting Number", "Scheduled Date", "Uploaded Video URL", "Channel Name", "Original Video URL"]]
+                
                 # Display the table with highlighting
                 st.dataframe(
                     df,
@@ -111,21 +114,21 @@ if start_button:
                             "Starting Number",
                             help="Template number used for the video"
                         ),
-                        "Channel Name": st.column_config.TextColumn(
-                            "Channel Name",
-                            help="Original channel name"
-                        ),
                         "Scheduled Date": st.column_config.TextColumn(
                             "Scheduled Date",
                             help="Scheduled release date and time (EST)"
                         ),
-                        "Original Video URL": st.column_config.TextColumn(
-                            "Original Video URL",
-                            help="Link to the original video"
-                        ),
                         "Uploaded Video URL": st.column_config.TextColumn(
                             "Uploaded Video URL",
                             help="Link to the uploaded video"
+                        ),
+                        "Channel Name": st.column_config.TextColumn(
+                            "Channel Name",
+                            help="Original channel name"
+                        ),
+                        "Original Video URL": st.column_config.TextColumn(
+                            "Original Video URL",
+                            help="Link to the original video"
                         )
                     },
                     hide_index=True,
