@@ -325,87 +325,99 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
                         privacy_status="private", scheduled_time=None, append_enabled=False, 
                         append_video_path=None, video_number=1):
     """Process a single video including download, append, and upload."""
-    # Download video
-    video_filename = clean_filename(f"video_{video_number}.mp4")
-    video_path = os.path.join(output_dir, video_filename)
-    
-    if not os.path.exists(video_path):
-        video_path = download_video(video_url, output_dir)
-        if not video_path:
-            return False
+    try:
+        # Download video
+        video_filename = clean_filename(f"video_{video_number}.mp4")
+        video_path = os.path.join(output_dir, video_filename)
         
-        # Append video if enabled
-        if append_enabled and append_video_path and os.path.exists(append_video_path):
-            try:
-                st.write("Appending video...")
-                # Load main video to get dimensions
-                main_clip = VideoFileClip(video_path)
-                main_width, main_height = main_clip.size
-                main_clip.close()
-                
-                # Load append video to get dimensions
-                append_clip = VideoFileClip(append_video_path)
-                append_width, append_height = append_clip.size
-                append_clip.close()
-                
-                st.write(f"Main video resolution: {main_width}x{main_height}")
-                st.write(f"Append video resolution: {append_width}x{append_height}")
-                
-                # Resize append video if resolutions don't match
-                if main_width != append_width or main_height != append_height:
-                    st.write(f"Resizing append video to match main video resolution: {main_width}x{main_height}")
-                    resized_append_path = os.path.join(output_dir, f"resized_append_{video_filename}")
-                    
-                    # Resize using OpenCV
-                    if not resize_video_opencv(append_video_path, resized_append_path, main_width, main_height):
-                        st.error("Failed to resize append video")
-                        return False
-                    
-                    append_video_path = resized_append_path
-                
-                # Load videos for concatenation
-                main_clip = VideoFileClip(video_path)
-                append_clip = VideoFileClip(append_video_path)
-                
-                # Concatenate videos
-                final_clip = concatenate_videoclips([main_clip, append_clip])
-                
-                # Save the final video
-                final_path = os.path.join(output_dir, f"final_{video_filename}")
-                st.write("Saving final video...")
-                final_clip.write_videofile(
-                    final_path,
-                    codec='libx264',
-                    audio_codec='aac',
-                    temp_audiofile='temp-audio.m4a',
-                    remove_temp=True
-                )
-                
-                # Close clips
-                main_clip.close()
-                append_clip.close()
-                final_clip.close()
-                
-                # Update video path to the concatenated version
-                video_path = final_path
-                st.success("Video appended successfully!")
-                
-            except Exception as e:
-                st.error(f"Error appending video: {str(e)}")
+        if not os.path.exists(video_path):
+            video_path = download_video(video_url, output_dir)
+            if not video_path:
                 return False
+            
+            # Append video if enabled
+            if append_enabled and append_video_path and os.path.exists(append_video_path):
+                try:
+                    st.write("Appending video...")
+                    # Load main video to get dimensions
+                    main_clip = VideoFileClip(video_path)
+                    main_width, main_height = main_clip.size
+                    main_clip.close()
+                    
+                    # Load append video to get dimensions
+                    append_clip = VideoFileClip(append_video_path)
+                    append_width, append_height = append_clip.size
+                    append_clip.close()
+                    
+                    st.write(f"Main video resolution: {main_width}x{main_height}")
+                    st.write(f"Append video resolution: {append_width}x{append_height}")
+                    
+                    # Resize append video if resolutions don't match
+                    if main_width != append_width or main_height != append_height:
+                        st.write(f"Resizing append video to match main video resolution: {main_width}x{main_height}")
+                        resized_append_path = os.path.join(output_dir, f"resized_append_{video_filename}")
+                        
+                        # Resize using OpenCV
+                        if not resize_video_opencv(append_video_path, resized_append_path, main_width, main_height):
+                            st.error("Failed to resize append video")
+                            return False
+                        
+                        append_video_path = resized_append_path
+                    
+                    # Load videos for concatenation
+                    main_clip = VideoFileClip(video_path)
+                    append_clip = VideoFileClip(append_video_path)
+                    
+                    # Concatenate videos
+                    final_clip = concatenate_videoclips([main_clip, append_clip])
+                    
+                    # Save the final video
+                    final_path = os.path.join(output_dir, f"final_{video_filename}")
+                    st.write("Saving final video...")
+                    final_clip.write_videofile(
+                        final_path,
+                        codec='libx264',
+                        audio_codec='aac',
+                        temp_audiofile='temp-audio.m4a',
+                        remove_temp=True
+                    )
+                    
+                    # Close clips
+                    main_clip.close()
+                    append_clip.close()
+                    final_clip.close()
+                    
+                    # Update video path to the concatenated version
+                    video_path = final_path
+                    st.success("Video appended successfully!")
+                    
+                except Exception as e:
+                    st.error(f"Error appending video: {str(e)}")
+                    return False
+            
+            # Upload video
+            st.write("Uploading video...")
+            
+            # Set privacy status based on scheduling
+            if scheduled_time:
+                st.write("Setting up scheduled publish...")
+                upload_privacy_status = "scheduled"
+            else:
+                upload_privacy_status = privacy_status
+            
+            video_id = upload_video(
+                youtube_service, 
+                video_path, 
+                title, 
+                description, 
+                privacy_status=upload_privacy_status,
+                scheduled_time=scheduled_time
+            )
+            if not video_id:
+                return False
+            return video_id
         
-        # Upload video
-        st.write("Uploading video...")
-        video_id = upload_video(
-            youtube_service, 
-            video_path, 
-            title, 
-            description, 
-            privacy_status=privacy_status if privacy_status != "scheduled" else "private",
-            scheduled_time=scheduled_time
-        )
-        if not video_id:
-            return False
-        return video_id
-    
-    return False 
+        return False
+    except Exception as e:
+        st.error(f"Error processing video: {str(e)}")
+        return False 
