@@ -103,34 +103,51 @@ if start_button:
                 df = pd.DataFrame(processed_videos)
                 st.write("DataFrame created with columns:", df.columns.tolist())
                 
+                # Get all columns including pattern search columns
+                base_columns = ["Starting Number", "Scheduled Date", "Uploaded Video URL", "Channel Name", "Original Video URL"]
+                pattern_columns = [col for col in df.columns if col not in base_columns]
+                
+                # Combine base columns with pattern columns at the end
+                all_columns = base_columns + pattern_columns
+                
                 # Reorder columns
-                df = df[["Starting Number", "Scheduled Date", "Uploaded Video URL", "Channel Name", "Original Video URL"]]
+                df = df[all_columns]
+                
+                # Create column configuration
+                column_config = {
+                    "Starting Number": st.column_config.NumberColumn(
+                        "Starting Number",
+                        help="Template number used for the video"
+                    ),
+                    "Scheduled Date": st.column_config.TextColumn(
+                        "Scheduled Date",
+                        help="Scheduled release date and time (EST)"
+                    ),
+                    "Uploaded Video URL": st.column_config.TextColumn(
+                        "Uploaded Video URL",
+                        help="Link to the uploaded video"
+                    ),
+                    "Channel Name": st.column_config.TextColumn(
+                        "Channel Name",
+                        help="Original channel name"
+                    ),
+                    "Original Video URL": st.column_config.TextColumn(
+                        "Original Video URL",
+                        help="Link to the original video"
+                    )
+                }
+                
+                # Add configuration for pattern search columns
+                for col in pattern_columns:
+                    column_config[col] = st.column_config.TextColumn(
+                        col,
+                        help=f"Pattern match result for {col}"
+                    )
                 
                 # Display the table with highlighting
                 st.dataframe(
                     df,
-                    column_config={
-                        "Starting Number": st.column_config.NumberColumn(
-                            "Starting Number",
-                            help="Template number used for the video"
-                        ),
-                        "Scheduled Date": st.column_config.TextColumn(
-                            "Scheduled Date",
-                            help="Scheduled release date and time (EST)"
-                        ),
-                        "Uploaded Video URL": st.column_config.TextColumn(
-                            "Uploaded Video URL",
-                            help="Link to the uploaded video"
-                        ),
-                        "Channel Name": st.column_config.TextColumn(
-                            "Channel Name",
-                            help="Original channel name"
-                        ),
-                        "Original Video URL": st.column_config.TextColumn(
-                            "Original Video URL",
-                            help="Link to the original video"
-                        )
-                    },
+                    column_config=column_config,
                     hide_index=True,
                     use_container_width=True
                 )

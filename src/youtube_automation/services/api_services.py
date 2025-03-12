@@ -13,8 +13,12 @@ import webbrowser
 from ..models.dummy_models import DummyGoogleSheets, DummyYouTubeService
 
 # Google Sheets API setup
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly',
-          'https://www.googleapis.com/auth/youtube.upload']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
+    'https://www.googleapis.com/auth/youtube.upload',
+    'https://www.googleapis.com/auth/youtube',
+    'https://www.googleapis.com/auth/youtube.force-ssl'
+]
 
 def setup_google_sheets(dev_mode=True):
     if dev_mode:
@@ -35,7 +39,7 @@ def setup_google_sheets(dev_mode=True):
         raise
 
 def get_youtube_service(dev_mode=True):
-    """Get an authenticated YouTube service instance."""
+    """Get an authenticated YouTube service instance using manual credentials."""
     if dev_mode:
         st.warning("⚠️ Running in development mode - YouTube integration is mocked")
         return DummyYouTubeService()
@@ -45,65 +49,30 @@ def get_youtube_service(dev_mode=True):
             st.error("❌ Missing client_secrets.json file.")
             return DummyYouTubeService()
 
-        # Initialize session state
-        if 'credentials' not in st.session_state:
-            st.session_state.credentials = None
-        if 'auth_in_progress' not in st.session_state:
-            st.session_state.auth_in_progress = False
+        # Load credentials from client_secrets.json
+        with open('client_secrets.json', 'r') as f:
+            client_config = json.load(f)
+            
+        # Create credentials object
+        credentials = Credentials(
+            token=client_config.get('access_token'),
+            refresh_token=client_config.get('refresh_token'),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_config['web']['client_id'],
+            client_secret=client_config['web']['client_secret'],
+            scopes=SCOPES
+        )
+        
+        # Refresh the token if needed
+        if credentials.expired and credentials.refresh_token:
+            credentials.refresh(Request())
+            
+            # Update the access token in client_secrets.json
+            client_config['access_token'] = credentials.token
+            with open('client_secrets.json', 'w') as f:
+                json.dump(client_config, f, indent=2)
 
-        creds = st.session_state.credentials
-
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                st.session_state.credentials = creds
-            else:
-                # Check for auth code in query parameters
-                query_params = st.experimental_get_query_params()
-                code = query_params.get("code", [None])[0]
-                
-                if code and st.session_state.auth_in_progress:
-                    try:
-                        flow = Flow.from_client_secrets_file(
-                            'client_secrets.json',
-                            scopes=SCOPES,
-                            redirect_uri='http://localhost:8501/'
-                        )
-                        flow.fetch_token(code=code)
-                        st.session_state.credentials = flow.credentials
-                        st.session_state.auth_in_progress = False
-                        st.success("✅ Authentication successful!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Authentication failed: {str(e)}")
-                        st.session_state.auth_in_progress = False
-                        return DummyYouTubeService()
-                else:
-                    if not st.session_state.auth_in_progress:
-                        st.markdown("""
-                        ### YouTube Authentication Required
-                        Click the button below to authenticate with your Google account.
-                        """)
-                        
-                        if st.button("🔐 Login with Google"):
-                            flow = Flow.from_client_secrets_file(
-                                'client_secrets.json',
-                                scopes=SCOPES,
-                                redirect_uri='http://localhost:8501/'
-                            )
-                            auth_url, _ = flow.authorization_url(
-                                access_type='offline',
-                                include_granted_scopes='true'
-                            )
-                            st.session_state.auth_in_progress = True
-                            st.markdown(f'<meta http-equiv="refresh" content="0;url={auth_url}">', unsafe_allow_html=True)
-                            st.stop()
-                        return DummyYouTubeService()
-                    else:
-                        st.info("🔄 Waiting for authentication...")
-                        return DummyYouTubeService()
-
-        return build('youtube', 'v3', credentials=creds)
+        return build('youtube', 'v3', credentials=credentials)
     
     except Exception as e:
         st.error(f"Error setting up YouTube service: {str(e)}")

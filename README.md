@@ -28,6 +28,44 @@ pip install -r requirements.txt
    - Create OAuth 2.0 credentials
    - Download the client configuration and rename it to `client_secrets.json`
 
+## Setting Up YouTube API Credentials
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the YouTube Data API v3 for your project
+4. Go to Credentials and create a new OAuth 2.0 Client ID
+5. Download the client configuration file and rename it to `client_secrets.json`
+6. Get your refresh token by following these steps:
+   - Go to [Google OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)
+   - Click the gear icon in the top right
+   - Check "Use your own OAuth credentials"
+   - Enter your client ID and client secret from the `client_secrets.json` file
+   - Select "YouTube Data API v3" from the list of APIs
+   - Click "Authorize APIs"
+   - After authorizing, click "Exchange authorization code for tokens"
+   - Copy the refresh token
+
+7. Update your `client_secrets.json` file to include the refresh token:
+
+```json
+{
+  "installed": {
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "refresh_token": "YOUR_REFRESH_TOKEN",
+    "token_uri": "https://oauth2.googleapis.com/token"
+  }
+}
+```
+
+The application will now use these credentials directly without requiring web-based login.
+
+## Required Scopes
+
+The following YouTube API scopes are required:
+- `https://www.googleapis.com/auth/youtube.upload`
+- `https://www.googleapis.com/auth/youtube`
+
 ## Running the Application
 
 ```bash

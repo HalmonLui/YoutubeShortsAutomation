@@ -1,10 +1,13 @@
+# Standard library imports
 import os
-import streamlit as st
-from googleapiclient.http import MediaFileUpload
-import yt_dlp
 import time
-from googleapiclient.errors import HttpError
+
+# Third-party imports
+import streamlit as st
 import pytz
+import yt_dlp
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
 
 def download_video(url, output_path, max_retries=3):
     """
@@ -126,27 +129,24 @@ def upload_video(youtube, video_path, title, description, privacy_status="privat
                 'categoryId': '22'  # People & Blogs category
             },
             'status': {
-                'privacyStatus': 'private',  # Initially set as private
+                'privacyStatus': 'private',  # Always start as private for scheduled videos
                 'selfDeclaredMadeForKids': False
             }
         }
         
         # Handle scheduling
-        if privacy_status == "scheduled" and scheduled_time:
+        if scheduled_time:
             # Convert to UTC for YouTube API
             if scheduled_time.tzinfo is None:
                 est = pytz.timezone('US/Eastern')
                 scheduled_time = est.localize(scheduled_time)
             utc_time = scheduled_time.astimezone(pytz.UTC)
             
+            # Add publishAt time - video will automatically become public at this time
             body['status'].update({
-                'privacyStatus': 'private',  # Must be private initially
                 'publishAt': utc_time.isoformat()
             })
             st.write(f"Video will be published at: {utc_time.isoformat()} UTC")
-        else:
-            # For non-scheduled videos, use the specified privacy status
-            body['status']['privacyStatus'] = privacy_status
 
         # Upload the video
         insert_request = youtube.videos().insert(
@@ -167,22 +167,26 @@ def upload_video(youtube, video_path, title, description, privacy_status="privat
                 st.write(f"Upload progress: {progress}%")
         
         video_id = response['id']
-        st.success(f"Video uploaded successfully! Video ID: {video_id}")
-
-        # If this is a scheduled video, update its privacy status to public
-        if privacy_status == "scheduled" and scheduled_time:
-            update_body = {
-                'id': video_id,
-                'status': {
-                    'privacyStatus': 'public',  # Will be public when published
-                    'publishAt': utc_time.isoformat()
+        
+        if scheduled_time:
+            st.success(f"Video uploaded and scheduled! It will remain private until {scheduled_time.strftime('%Y-%m-%d %I:%M %p %Z')}")
+        else:
+            # For non-scheduled videos, update to the requested privacy status if it's not private
+            if privacy_status != 'private':
+                update_body = {
+                    'id': video_id,
+                    'status': {
+                        'privacyStatus': privacy_status
+                    }
                 }
-            }
-            youtube.videos().update(
-                part='status',
-                body=update_body
-            ).execute()
-            st.success(f"Video scheduled to be published at {scheduled_time.strftime('%Y-%m-%d %I:%M %p %Z')}")
+                try:
+                    youtube.videos().update(
+                        part='status',
+                        body=update_body
+                    ).execute()
+                except Exception as e:
+                    st.warning(f"Video uploaded but privacy status might not be set correctly: {str(e)}")
+            st.success(f"Video uploaded successfully! Video ID: {video_id}")
         
         return video_id
         

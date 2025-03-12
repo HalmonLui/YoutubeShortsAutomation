@@ -6,7 +6,7 @@ import time
 import re
 import cv2
 import numpy as np
-from moviepy.editor import VideoFileClip, concatenate_videoclips, ImageSequenceClip
+import moviepy.editor as mpy
 from .api.youtube_api import download_video, upload_video
 from .utils.helpers import format_title, format_description, clean_filename
 
@@ -296,8 +296,8 @@ def resize_video_opencv(input_path, output_path, target_width, target_height):
         out.release()
         
         # Get audio from original clip and apply to resized video
-        original_clip = VideoFileClip(input_path)
-        resized_clip = VideoFileClip(output_path)
+        original_clip = mpy.VideoFileClip(input_path)
+        resized_clip = mpy.VideoFileClip(output_path)
         
         # Add audio to resized clip
         final_clip = resized_clip.set_audio(original_clip.audio)
@@ -340,12 +340,12 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
                 try:
                     st.write("Appending video...")
                     # Load main video to get dimensions
-                    main_clip = VideoFileClip(video_path)
+                    main_clip = mpy.VideoFileClip(video_path)
                     main_width, main_height = main_clip.size
                     main_clip.close()
                     
                     # Load append video to get dimensions
-                    append_clip = VideoFileClip(append_video_path)
+                    append_clip = mpy.VideoFileClip(append_video_path)
                     append_width, append_height = append_clip.size
                     append_clip.close()
                     
@@ -365,11 +365,11 @@ def process_single_video(video_url, output_dir, youtube_service, title, descript
                         append_video_path = resized_append_path
                     
                     # Load videos for concatenation
-                    main_clip = VideoFileClip(video_path)
-                    append_clip = VideoFileClip(append_video_path)
+                    main_clip = mpy.VideoFileClip(video_path)
+                    append_clip = mpy.VideoFileClip(append_video_path)
                     
                     # Concatenate videos
-                    final_clip = concatenate_videoclips([main_clip, append_clip])
+                    final_clip = mpy.concatenate_videoclips([main_clip, append_clip])
                     
                     # Save the final video
                     final_path = os.path.join(output_dir, f"final_{video_filename}")
